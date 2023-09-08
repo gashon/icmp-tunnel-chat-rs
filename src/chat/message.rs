@@ -1,7 +1,11 @@
+use std::sync::Mutex;
 use crate::network::icmp::{MAX_PAYLOAD_SIZE, encode_request_packet_from_fragment, encode_reply_packet_from_fragment};
 
+lazy_static::lazy_static! {
+    static ref RESERVED_MESSAGE_IDS: Mutex<Vec<u16>> = Mutex::new(Vec::new());
+}
+
 pub struct Message {
-    pub static reserved_message_ids = Vec::new(),
     pub message_id: u16,
     // fragment_id is the index of the fragment in the message.
     pub fragments: Vec<Fragment>,
@@ -14,7 +18,7 @@ impl Message {
         Self { message_id, fragments: Vec::with_capacity(num_fragments) }
     }
 
-    pub fn from_payload(&self, payload: Vec<u8>) -> Self {
+    pub fn from_payload(payload: Vec<u8>) -> Self {
         let mut fragments = get_fragments_from_payload(&payload);
         let message_id = self.create_message_id();
 
@@ -33,6 +37,8 @@ impl Message {
         self.fragments[fragment.fragment_id] = fragment;
     }
 
+    // --- Private Static Methods ---
+
     fn get_fragments_from_payload(payload: &Vec<u8>) -> Vec<Fragment> {
         let num_fragments = (payload.len() as f32 / MAX_PAYLOAD_SIZE as f32).ceil() as u16;
         let mut fragments = Vec::with_capacity(num_fragments);
@@ -50,17 +56,20 @@ impl Message {
         fragments
     }
 
-    fn create_message_id(&self) -> u16 {
+    fn create_message_id() -> u16 {
         let mut message_id = 0;
+
+        let mut reserved_ids = RESERVED_MESSAGE_IDS.lock().unwrap();
 
         // TODO refactor to improve performance
         // TODO handle overflow
-        while self.reserved_message_ids.contains(&message_id) {
-            message_id++;
+        while reserved_ids.contains(&message_id) {
+            message_id += 1;
         }
 
-        self.reserved_message_ids.push(message_id);
+        reserved_ids.push(message_id);
         message_id
     }
+
 
 }
