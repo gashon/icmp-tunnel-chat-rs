@@ -1,20 +1,28 @@
 use crate::network::icmp::{MAX_PAYLOAD_SIZE, encode_request_packet_from_fragment, encode_reply_packet_from_fragment};
 
 pub struct Message {
+    pub static reserved_message_ids = Vec::new(),
     pub message_id: u16,
     // fragment_id is the index of the fragment in the message.
     pub fragments: Vec<Fragment>,
 }
 
 impl Message {
-    pub fn new(message_id: u16, num_fragments: u16) -> Self {
+    pub fn new(num_fragments: u16) -> Self {
+        let message_id = self.create_message_id();
+
         Self { message_id, fragments: Vec::with_capacity(num_fragments) }
     }
 
-    pub fn from_payload_with_message_id(&self, message_id: u16, payload: Vec<u8>) -> Self {
+    pub fn from_payload(&self, payload: Vec<u8>) -> Self {
         let mut fragments = get_fragments_from_payload(&payload);
+        let message_id = self.create_message_id();
 
         Self { message_id, fragments }
+    }
+
+    pub fn contains_all_fragments(&self) -> bool {
+        self.fragments.len() == self.fragments.capacity()
     }
 
     pub fn add_fragment(&mut self, fragment: Fragment) {
@@ -40,6 +48,19 @@ impl Message {
         }
 
         fragments
+    }
+
+    fn create_message_id(&self) -> u16 {
+        let mut message_id = 0;
+
+        // TODO refactor to improve performance
+        // TODO handle overflow
+        while self.reserved_message_ids.contains(&message_id) {
+            message_id++;
+        }
+
+        self.reserved_message_ids.push(message_id);
+        message_id
     }
 
 }
