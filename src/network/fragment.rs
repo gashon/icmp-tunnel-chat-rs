@@ -12,4 +12,11 @@ impl Fragment {
         Self { fragment_id, message_id, payload }
     }
 
+    pub fn from_packet(packet: &IcmpPacket) -> Result<Self, IcmpChatError> {
+        let payload = packet.payload().to_vec();
+        let fragment_id = packet.sequence_number();
+        let message_id = packet.identifier();
+
+        Ok(Self { fragment_id, message_id, payload })
+    }
 }
