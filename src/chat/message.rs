@@ -13,14 +13,14 @@ pub struct Message {
 
 impl Message {
     pub fn new(num_fragments: u16) -> Self {
-        let message_id = self.create_message_id();
+        let message_id = create_message_id();
 
         Self { message_id, fragments: Vec::with_capacity(num_fragments) }
     }
 
     pub fn from_payload(payload: Vec<u8>) -> Self {
         let mut fragments = get_fragments_from_payload(&payload);
-        let message_id = self.create_message_id();
+        let message_id = create_message_id();
 
         Self { message_id, fragments }
     }
@@ -37,39 +37,36 @@ impl Message {
         self.fragments[fragment.fragment_id] = fragment;
     }
 
-    // --- Private Static Methods ---
+}
 
-    fn get_fragments_from_payload(payload: &Vec<u8>) -> Vec<Fragment> {
-        let num_fragments = (payload.len() as f32 / MAX_PAYLOAD_SIZE as f32).ceil() as u16;
-        let mut fragments = Vec::with_capacity(num_fragments);
+fn get_fragments_from_payload(payload: &Vec<u8>) -> Vec<Fragment> {
+    let num_fragments = (payload.len() as f32 / MAX_PAYLOAD_SIZE as f32).ceil() as u16;
+    let mut fragments = Vec::with_capacity(num_fragments);
 
-        for fragment_id in 0..num_fragments {
-            let start = (fragment_id * MAX_PAYLOAD_SIZE) as usize;
-            let end = ((fragment_id + 1) * MAX_PAYLOAD_SIZE) as usize;
+    for fragment_id in 0..num_fragments {
+        let start = (fragment_id * MAX_PAYLOAD_SIZE) as usize;
+        let end = ((fragment_id + 1) * MAX_PAYLOAD_SIZE) as usize;
 
-            let fragment_payload = payload[start..end].to_vec();
-            let fragment = Fragment::new(fragment_id, message_id, fragment_payload);
+        let fragment_payload = payload[start..end].to_vec();
+        let fragment = Fragment::new(fragment_id, message_id, fragment_payload);
 
-            fragments.push(fragment);
-        }
-
-        fragments
+        fragments.push(fragment);
     }
 
-    fn create_message_id() -> u16 {
-        let mut message_id = 0;
+    fragments
+}
 
-        let mut reserved_ids = RESERVED_MESSAGE_IDS.lock().unwrap();
+fn create_message_id() -> u16 {
+    let mut message_id = 0;
 
-        // TODO refactor to improve performance
-        // TODO handle overflow
-        while reserved_ids.contains(&message_id) {
-            message_id += 1;
-        }
+    let mut reserved_ids = RESERVED_MESSAGE_IDS.lock().unwrap();
 
-        reserved_ids.push(message_id);
-        message_id
+    // TODO refactor to improve performance
+    // TODO handle overflow
+    while reserved_ids.contains(&message_id) {
+        message_id += 1;
     }
 
-
+    reserved_ids.push(message_id);
+    message_id
 }
