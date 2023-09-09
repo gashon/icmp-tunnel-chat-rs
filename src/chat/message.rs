@@ -1,5 +1,7 @@
 use std::sync::Mutex;
-use crate::network::icmp::{MAX_PAYLOAD_SIZE, encode_request_packet_from_fragment, encode_reply_packet_from_fragment};
+use std::fmt;
+
+use crate::network::fragment::{Fragment, FragmentId, ICMP_PAYLOAD_LEN};
 
 // We need to keep track of which message ids are reserved so we don't reuse them
 lazy_static::lazy_static! {
@@ -32,13 +34,16 @@ impl fmt::Display for Message {
     }
 }
 
-// TODO handle display
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 impl Message {
-    pub fn new(num_fragments: u16) -> Self {
+    pub fn new(num_fragments: usize) -> Self {
         let message_id = create_message_id();
 
-        Self { message_id, fragments: vec![None; num_fragments] }
+        let mut fragments = Vec::with_capacity(num_fragments);
+        for _ in 0..num_fragments {
+            fragments.push(None);
+        }
+
+        Self { message_id, fragments }
     }
 
     pub fn from_payload(payload: &Vec<u8>) -> Self {
@@ -52,26 +57,26 @@ impl Message {
         self.fragments.iter().all(|fragment| fragment.is_some())
     }
 
-    pub fn add_fragment(&mut self, fragment: Fragment) {
-        if fragment.fragment_id > self.fragments.len() {
+    pub fn add_fragment(&mut self, fragment: &Fragment) {
+        if fragment.fragment_id as usize > self.fragments.len() {
             // TODO handle out of order fragments
         } 
         
-        self.fragments[fragment.fragment_id] = Some(fragment);
+        self.fragments[fragment.fragment_id as usize] = Some(fragment.clone());
     }
 
 }
 
 fn get_fragments_from_payload(message_id: MessageId, payload: &Vec<u8>) -> Vec<Fragment> {
-    let num_fragments = (payload.len() as f32 / MAX_PAYLOAD_SIZE as f32).ceil() as u16;
+    let num_fragments = (payload.len() as f32 / ICMP_PAYLOAD_LEN as f32).ceil() as usize;
     let mut fragments = Vec::with_capacity(num_fragments);
 
     for fragment_id in 0..num_fragments {
-        let start = (fragment_id * MAX_PAYLOAD_SIZE) as usize;
-        let end = ((fragment_id + 1) * MAX_PAYLOAD_SIZE) as usize;
+        let start = (fragment_id * ICMP_PAYLOAD_LEN) as usize;
+        let end = ((fragment_id + 1) * ICMP_PAYLOAD_LEN) as usize;
 
         let fragment_payload = payload[start..end].to_vec();
-        let fragment = Fragment::new(fragment_id, message_id, fragment_payload);
+        let fragment = Fragment::new(fragment_id as FragmentId, message_id, fragment_payload);
 
         fragments[fragment_id] = fragment;
     }

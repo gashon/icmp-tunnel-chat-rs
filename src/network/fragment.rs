@@ -6,9 +6,9 @@
 use std::error::Error;
 use std::net::Ipv4Addr;
 
-use pnet::packet::icmp::echo_reply::EchoReplyPacket;
+use pnet::packet::icmp::echo_reply::{EchoReplyPacket, MutableEchoReplyPacket};
 use pnet::packet::icmp::echo_request::{MutableEchoRequestPacket, EchoRequestPacket};
-use pnet::packet::icmp::{IcmpPacket, IcmpTypes};
+use pnet::packet::icmp::{IcmpPacket, IcmpTypes, IcmpType};
 use pnet::packet::ip::IpNextHeaderProtocols;
 use pnet::packet::ipv4::Ipv4Packet;
 use pnet::packet::Packet;
@@ -16,22 +16,27 @@ use pnet::packet::MutablePacket;
 use pnet::packet::ipv4::MutableIpv4Packet;
 use pnet::util::checksum;
 
+use crate::chat::message::MessageId;
+
 // TODO tune
 static IPV4_HEADER_LEN: usize = 21;
 static ICMP_HEADER_LEN: usize = 8;
-static ICMP_PAYLOAD_LEN: usize = 32;
+pub static ICMP_PAYLOAD_LEN: usize = 32;
 
+pub type FragmentId = u16;
+
+#[derive(Clone)]
 pub struct Fragment {
     // sequence number of the fragment
-    pub fragment_id: u16,
+    pub fragment_id: FragmentId,
     // identifier of the message
-    pub message_id: u16,
+    pub message_id: MessageId,
     // payload of the message
     pub payload: Vec<u8>,
 }
 
 impl Fragment {
-    pub fn new(fragment_id: u16, message_id: u16, payload: Vec<u8>) -> Self {
+    pub fn new(fragment_id: FragmentId, message_id: MessageId, payload: Vec<u8>) -> Self {
         Self { fragment_id, message_id, payload }
     }
 
@@ -77,7 +82,20 @@ impl Fragment {
         Ok(icmp_packet)
     }
 
-    pub fn to_ipv4_packet(&self, destination_ip: Ipv4Addr) -> Result<MutableIpv4Packet, Box<dyn Error>> {
+    pub fn to_icmp_reply_packet(&self) -> Result<MutableEchoReplyPacket, Box<dyn Error>> {
+        let mut payload = self.payload.clone();
+        let mut icmp_packet = MutableEchoReplyPacket::new(&mut payload[..]).unwrap();
+
+        icmp_packet.set_icmp_type(IcmpTypes::EchoReply);
+        icmp_packet.set_identifier(self.message_id);
+        icmp_packet.set_sequence_number(self.fragment_id);
+        let checksum = checksum(&icmp_packet.packet_mut(), 2);
+        icmp_packet.set_checksum(checksum);
+
+        Ok(icmp_packet)
+    }
+
+    pub fn to_ipv4_packet(&self, destination_ip: Ipv4Addr, icmp_type: IcmpType) -> Result<MutableIpv4Packet, Box<dyn Error>> {
         let buffer_ip: &mut [u8] = destination_ip.octets().as_mut();
         let mut ipv4_packet = MutableIpv4Packet::new(buffer_ip).unwrap();
 
@@ -88,9 +106,19 @@ impl Fragment {
         ipv4_packet.set_next_level_protocol(IpNextHeaderProtocols::Icmp);
         ipv4_packet.set_destination(destination_ip);
     
-        let mut icmp_packet = self.to_icmp_request_packet()?;
-        ipv4_packet.set_payload(icmp_packet.packet_mut());
-        Ok(ipv4_packet)
+        match icmp_type {
+            IcmpTypes::EchoRequest => {
+                let mut icmp_packet = self.to_icmp_request_packet()?;
+                ipv4_packet.set_payload(icmp_packet.packet_mut());
+                Ok(ipv4_packet)
+            }
+            IcmpTypes::EchoReply => {
+                let mut icmp_packet = self.to_icmp_reply_packet()?;
+                ipv4_packet.set_payload(icmp_packet.packet_mut());
+                Ok(ipv4_packet)
+            },
+            _ => panic!("Invalid ICMP type"),
+        }
     }
 
     
