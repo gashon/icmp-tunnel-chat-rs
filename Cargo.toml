@@ -1,5 +1,5 @@
 [package]
-name = "icmp-tunnel-chat"
+name = "p2p_icmp_chat"
 version = "0.1.0"
 edition = "2021"
 

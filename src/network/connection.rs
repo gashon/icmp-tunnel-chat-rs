@@ -1,12 +1,13 @@
-use pnet::transport::{self, TransportChannelType};
-use pnet::packet::ip::IpNextHeaderProtocols;
-use pnet::packet::ipv4::Ipv4Packet;
-use pnet::packet::Packet;
 use std::net::IpAddr;
 use std::error::Error;
 
+use pnet::packet::ip::IpNextHeaderProtocols;
+use pnet::packet::ipv4::Ipv4Packet;
+use pnet::packet::Packet;
+use pnet::transport::{icmp_packet_iter, transport_channel, TransportChannelType::Layer3};
+
 use crate::network::icmp::{encode_request_packet_from_fragment, encode_reply_packet_from_fragment};
-use crate::chat::message::{MessageId}
+use crate::chat::message::MessageId;
 
 // TODO tune buffer size
 const BUFFER_SIZE: usize = 4096;
@@ -22,9 +23,13 @@ pub struct Connection {
 }
 
 impl Connection {
-    pub fn new(destination_ip: IpAddr) -> Result<Self, std::io::Error> {
-        let protocol = IpNextHeaderProtocols::Icmp;
-        let (tx, rx) = transport::transport_channel(BUFFER_SIZE, TransportChannelType::Layer3(protocol))?;
+    pub fn new(destination_ip: IpAddr) -> Result<Self, Box<dyn Error>> {
+        let protocol = Layer3(IpNextHeaderProtocols::Icmp);
+           let (mut tx, mut rx) = transport_channel(BUFFER_SIZE, protocol)
+                .map_err(|err| format!("Error opening the channel: {}", err))?;
+
+        let mut rx = icmp_packet_iter(&mut rx);
+
         Ok(Self {
             destination_ip,
             tx,
