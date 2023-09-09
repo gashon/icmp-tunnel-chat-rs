@@ -11,26 +11,41 @@ pub type MessageId = u16;
 pub struct Message {
     pub message_id: MessageId,
     // fragment_id is the index of the fragment in the message.
-    pub fragments: Vec<Fragment>,
+    pub fragments: Vec<Option<Fragment>>,
+}
+
+impl fmt::Display for Message {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut payload = Vec::new();
+
+        for fragment in &self.fragments {
+            payload.extend(fragment.payload);
+        }
+
+        let payload = String::from_utf8(payload).unwrap();
+
+        write!(f, "{}", payload)
+    }
 }
 
 // TODO handle display
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 impl Message {
     pub fn new(num_fragments: u16) -> Self {
         let message_id = create_message_id();
 
-        Self { message_id, fragments: Vec::with_capacity(num_fragments) }
+        Self { message_id, fragments: vec![None; num_fragments] }
     }
 
     pub fn from_payload(payload: &Vec<u8>) -> Self {
         let message_id = create_message_id();
         let mut fragments = get_fragments_from_payload(message_id, &payload);
-
-        Self { message_id, fragments }
+        
+        Self { message_id, fragments: fragments.into_iter().map(|fragment| Some(fragment)).collect() }
     }
 
     pub fn contains_all_fragments(&self) -> bool {
-        self.fragments.len() == self.fragments.capacity()
+        self.fragments.iter().all(|fragment| fragment.is_some())
     }
 
     pub fn add_fragment(&mut self, fragment: Fragment) {
@@ -38,7 +53,7 @@ impl Message {
             // TODO handle out of order fragments
         } 
         
-        self.fragments[fragment.fragment_id] = fragment;
+        self.fragments[fragment.fragment_id] = Some(fragment);
     }
 
 }
