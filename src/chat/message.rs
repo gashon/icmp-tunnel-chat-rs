@@ -16,12 +16,16 @@ pub struct Message {
 
 impl fmt::Display for Message {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut payload = Vec::new();
-
-        for fragment in &self.fragments {
-            payload.extend(fragment.payload);
+        if !self.contains_all_fragments() {
+            return write!(f, "Message {} is missing fragments", self.message_id);
         }
 
+        let mut payload = Vec::new();
+        for fragment in &self.fragments {
+            if let Some(fragment) = fragment {
+                payload.extend(fragment.payload.clone());
+            }
+        }
         let payload = String::from_utf8(payload).unwrap();
 
         write!(f, "{}", payload)

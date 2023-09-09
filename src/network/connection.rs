@@ -79,7 +79,7 @@ impl Connection {
         }
     }
 
-    fn extract_from_packet(&self, icmp_packet: &IcmpPacket) -> (Option<MessageId>, Option<Fragment>) {
+    fn extract_from_packet(icmp_packet: &IcmpPacket) -> (Option<MessageId>, Option<Fragment>) {
         let message_id = icmp_packet.identifier();
         let fragment = Fragment::from_packet(icmp_packet);
         (Some(message_id), fragment)
