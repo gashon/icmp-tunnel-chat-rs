@@ -3,8 +3,9 @@ use pnet::packet::ip::IpNextHeaderProtocols;
 use pnet::packet::ipv4::Ipv4Packet;
 use pnet::packet::Packet;
 use std::net::IpAddr;
+use std::error::Error;
 
-use crate::network::icmp::{encode_request_packet_from_fragment};
+use crate::network::icmp::{encode_request_packet_from_fragment, encode_reply_packet_from_fragment};
 use crate::chat::message::{MessageId}
 
 // TODO tune buffer size
@@ -38,23 +39,33 @@ impl Connection {
         self.messages_inflight.insert(message.message_id, message);
         for fragment in &message.fragments {
             let packet = encode_request_packet_from_fragment(fragment)?;
-            self.tx.send_to(packet, self.destination_ip)?;
+            self.send_packet(packet)?;
         }
         Ok(())
     }
 
-    pub fn listen(&self) -> Result<Message, IcmpChatError> {
+    pub fn listen(&self) -> Result<Message, Box<dyn Error>> {
         loop {
             let (packet, _) = self.rx.recv_from(BUFFER_SIZE)?;
             let ipv4_packet = Ipv4Packet::new(packet).ok_or(IcmpChatError::PacketError)?;
             let icmp_packet = IcmpPacket::new(ipv4_packet.payload()).ok_or(IcmpChatError::PacketError)?;
 
             match icmp_packet.get_icmp_type() {
-                IcmpTypes::EchoRequest => self.handle_icmp_packet(&icmp_packet, self.messages_received),
                 IcmpTypes::EchoReply => self.handle_icmp_packet(&icmp_packet, self.messages_inflight),
+                IcmpTypes::EchoRequest => {
+                    self.handle_icmp_packet(&icmp_packet, self.messages_received);
+                    icmp_packet.set_icmp_type(IcmpTypes::EchoReply);
+                    // Send back the same packet we received
+                    self.send_packet(icmp_packet)?;
+                },
                 _ => continue,
             }
         }
+    }
+
+    fn send_packet(&self, packet: MutableEchoRequestPacket) -> Result<(), Box<dyn Error>> {
+        self.tx.send_to(packet, self.destination_ip)?;
+        Ok(())
     }
 
     fn handle_icmp_packet(&self, icmp_packet: &IcmpPacket, messages_map: &mut HashMap<MessageId, Message>) {
