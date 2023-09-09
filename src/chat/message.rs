@@ -14,6 +14,7 @@ pub struct Message {
     pub fragments: Vec<Fragment>,
 }
 
+// TODO handle display
 impl Message {
     pub fn new(num_fragments: u16) -> Self {
         let message_id = create_message_id();
@@ -59,6 +60,10 @@ fn get_fragments_from_payload(message_id: MessageId, payload: &Vec<u8>) -> Vec<F
     fragments
 }
 
+fn message_id_is_reserved(message_id: MessageId) -> bool {
+    RESERVED_MESSAGE_IDS.lock().unwrap().contains(&message_id)
+}
+
 fn create_message_id() -> MessageId {
     let mut message_id = 0;
 
@@ -66,7 +71,7 @@ fn create_message_id() -> MessageId {
 
     // TODO refactor to improve performance
     // TODO handle overflow
-    while reserved_ids.contains(&message_id) {
+    while message_id_is_reserved(message_id) {
         message_id += 1;
     }
 
