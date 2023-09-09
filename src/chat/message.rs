@@ -1,12 +1,15 @@
 use std::sync::Mutex;
 use crate::network::icmp::{MAX_PAYLOAD_SIZE, encode_request_packet_from_fragment, encode_reply_packet_from_fragment};
 
+// We need to keep track of which message ids are reserved so we don't reuse them
 lazy_static::lazy_static! {
     static ref RESERVED_MESSAGE_IDS: Mutex<Vec<u16>> = Mutex::new(Vec::new());
 }
 
+pub type MessageId = u16;
+
 pub struct Message {
-    pub message_id: u16,
+    pub message_id: MessageId,
     // fragment_id is the index of the fragment in the message.
     pub fragments: Vec<Fragment>,
 }
@@ -18,9 +21,9 @@ impl Message {
         Self { message_id, fragments: Vec::with_capacity(num_fragments) }
     }
 
-    pub fn from_payload(payload: Vec<u8>) -> Self {
-        let mut fragments = get_fragments_from_payload(&payload);
+    pub fn from_payload(payload: &Vec<u8>) -> Self {
         let message_id = create_message_id();
+        let mut fragments = get_fragments_from_payload(message_id, &payload);
 
         Self { message_id, fragments }
     }
@@ -39,7 +42,7 @@ impl Message {
 
 }
 
-fn get_fragments_from_payload(payload: &Vec<u8>) -> Vec<Fragment> {
+fn get_fragments_from_payload(message_id: MessageId, payload: &Vec<u8>) -> Vec<Fragment> {
     let num_fragments = (payload.len() as f32 / MAX_PAYLOAD_SIZE as f32).ceil() as u16;
     let mut fragments = Vec::with_capacity(num_fragments);
 
@@ -50,13 +53,13 @@ fn get_fragments_from_payload(payload: &Vec<u8>) -> Vec<Fragment> {
         let fragment_payload = payload[start..end].to_vec();
         let fragment = Fragment::new(fragment_id, message_id, fragment_payload);
 
-        fragments.push(fragment);
+        fragments[fragment_id] = fragment;
     }
 
     fragments
 }
 
-fn create_message_id() -> u16 {
+fn create_message_id() -> MessageId {
     let mut message_id = 0;
 
     let mut reserved_ids = RESERVED_MESSAGE_IDS.lock().unwrap();

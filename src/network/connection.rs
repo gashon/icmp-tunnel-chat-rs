@@ -1,18 +1,34 @@
+use pnet::transport::{self, TransportChannelType};
+use pnet::packet::ip::IpNextHeaderProtocols;
+use pnet::packet::ipv4::Ipv4Packet;
+use pnet::packet::Packet;
+use std::net::IpAddr;
 
+use crate::chat::message::{MessageId}
 
 pub struct Connection {
-    destination: std::net::IpV4Addr,
-    messages: HashMap<u16, Message>,
+    destination_ip: IpAddr,
+    tx: transport::TransportSender,
+    rx: transport::TransportReceiver,
+
+    // Keep track of messages we've sent so we can reassemble them when we receive them.
+    messages: HashMap<MessageId, Message>,
 }
 
 impl Connection {
-    pub fn new(destination: std::net::IpV4Addr) -> Self {
-        Self { destination }
+    pub fn new(destination_ip: IpAddr) -> Result<Self, std::io::Error> {
+        let protocol = IpNextHeaderProtocols::Icmp;
+        // TODO tune buffer size
+        let (tx, rx) = transport::transport_channel(4096, TransportChannelType::Layer3(protocol))?;
+
+        // Todo bind to random port
+        // Todo bind to ip
+
+        Self {destination_ip, tx, rx, messages: HashMap::new()}
     }
 
     pub fn send_payload(&self, payload: Vec<u8>) -> Result<(), IcmpChatError> {
-        let message_id = self.get_message_id();
-        let message = Message::new(message_id, payload);
+        let message = Message::from_payload(payload);
 
         let mut fragments = message.fragments;
         let mut sent_fragments = Vec::with_capacity(fragments.len());
@@ -24,7 +40,7 @@ impl Connection {
             let mut socket = IcmpSocket::bind()?;
             socket.send_to(packet, self.destination)?;
 
-            sent_fragments.push(fragment);
+            sent_fragments.push(fragment); 
         }
 
         Ok(())
