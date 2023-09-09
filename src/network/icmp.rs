@@ -23,16 +23,3 @@ pub fn encode_request_packet_from_fragment(fragment: &Fragment) -> Result<Mutabl
 
     Ok(packet)
 }
-
-// switch destination and source
-// make echo reply
-pub fn encode_echo_reply_from_packet(packet: &MutableEchoRequestPacket) -> Result<MutableEchoReplyPacket, IcmpChatError> {
-    
-    
-    let mut buffer = vec![0; 8 + packet.payload().len()];
-    let mut reply_packet = MutableEchoReplyPacket::new(&mut buffer).ok_or(IcmpChatError::PacketError)?;
-
-    packet.set_icmp_type(IcmpTypes::EchoReply);
-
-    Ok(reply_packet)
-}
