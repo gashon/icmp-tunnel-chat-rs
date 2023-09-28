@@ -1,16 +1,20 @@
-use std::net::{Ipv4Addr, IpAddr};
-use std::error::Error;
 use std::collections::HashMap;
+use std::error::Error;
+use std::net::{IpAddr, Ipv4Addr};
 
-use pnet::packet::ip::IpNextHeaderProtocols;
+use pnet::packet::icmp::echo_request::EchoRequestPacket;
 use pnet::packet::icmp::{IcmpPacket, IcmpTypes};
-use pnet::transport::{TransportSender, TransportReceiver, icmp_packet_iter, transport_channel, TransportChannelType::Layer3};
+use pnet::packet::ip::IpNextHeaderProtocols;
+use pnet::transport::{
+    icmp_packet_iter, transport_channel, TransportChannelType::Layer3, TransportReceiver,
+    TransportSender,
+};
 
 use crate::chat::message::{Message, MessageId};
-use crate::network::fragment::Fragment;
+use crate::network::fragment::{Fragment, ICMP_BUFFER_SIZE};
 
 // TODO tune buffer size
-const BUFFER_SIZE: usize = 4096;
+const CHANNEL_BUFFER_SIZE: usize = 4096;
 
 pub struct Connection {
     destination_ip: Ipv4Addr,
@@ -25,9 +29,8 @@ pub struct Connection {
 impl Connection {
     pub fn new(destination_ip: Ipv4Addr) -> Result<Self, Box<dyn Error>> {
         let protocol = Layer3(IpNextHeaderProtocols::Icmp);
-        let (tx, rx) = transport_channel(BUFFER_SIZE, protocol)
+        let (tx, rx) = transport_channel(CHANNEL_BUFFER_SIZE, protocol)
             .map_err(|err| format!("Error opening the channel: {}", err))?;
-        
 
         Ok(Self {
             destination_ip,
@@ -41,20 +44,25 @@ impl Connection {
     pub fn send_payload(&mut self, payload: Vec<u8>) -> Result<(), Box<dyn std::error::Error>> {
         let message = Box::new(Message::from_payload(&payload));
         let message_id = message.message_id;
-    
+
         self.messages_inflight.insert(message_id, message);
-    
+        // max payload size is 1472 bytes
+        let mut buf: Vec<u8> = vec![0; 1472];
+
         // Borrow a reference to the inserted message
-        if let Some(stored_message) = self.messages_inflight.get(&message_id) {
-            for fragment in &stored_message.fragments {
-                let packet = fragment.as_ref().unwrap().to_ipv4_packet(self.destination_ip, IcmpTypes::EchoRequest)?;
+        if let Some(stored_message) = self.messages_inflight.get_mut(&message_id) {
+            for fragment in &mut stored_message.fragments {
+                let packet = fragment.as_mut().unwrap().to_ipv4_packet(
+                    self.destination_ip,
+                    IcmpTypes::EchoRequest,
+                    &mut buf[..],
+                )?;
                 self.tx.send_to(packet, IpAddr::V4(self.destination_ip))?;
             }
         }
-    
+
         Ok(())
     }
-    
 
     pub fn listen(&mut self) -> Result<Message, Box<dyn Error>> {
         let mut rx_iterator = icmp_packet_iter(&mut self.rx);
@@ -66,20 +74,25 @@ impl Connection {
                 }
 
                 match icmp_packet.get_icmp_type() {
-                    IcmpTypes::EchoReply => handle_icmp_packet(&icmp_packet, &mut self.messages_inflight),
+                    IcmpTypes::EchoReply => {
+                        handle_icmp_packet(&icmp_packet, &mut self.messages_inflight)
+                    }
                     IcmpTypes::EchoRequest => {
                         handle_icmp_packet(&icmp_packet, &mut self.messages_received);
-                    },
+                    }
                     _ => continue,
                 }
-
             }
         }
     }
 }
 
-fn handle_icmp_packet(icmp_packet: &IcmpPacket, messages_map: &mut HashMap<MessageId, Box<Message>>) {
-    let fragment = Fragment::from_icmp_packet(icmp_packet).expect("Failed to create fragment from ICMP packet");
+fn handle_icmp_packet(
+    icmp_packet: &IcmpPacket,
+    messages_map: &mut HashMap<MessageId, Box<Message>>,
+) {
+    let fragment = Fragment::from_icmp_packet(icmp_packet)
+        .expect("Failed to create fragment from ICMP packet");
 
     if let Some(message) = messages_map.get_mut(&fragment.message_id) {
         message.add_fragment(&fragment);
