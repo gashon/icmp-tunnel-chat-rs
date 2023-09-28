@@ -58,6 +58,9 @@ impl Connection {
                     &mut buf[..],
                 )?;
                 self.tx.send_to(packet, IpAddr::V4(self.destination_ip))?;
+
+                // clear the buffer
+                buf = vec![0; 1472];
             }
         }
 

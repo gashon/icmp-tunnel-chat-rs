@@ -144,3 +144,25 @@ impl Fragment {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn create_dummy_payload() -> Vec<u8> {
+        let mut payload = Vec::new();
+        for i in 0..ICMP_PAYLOAD_LEN {
+            payload.push(i as u8);
+        }
+        payload
+    }
+
+    #[test]
+    fn test_new_fragment() {
+        let fragment = Fragment::new(1, 2, create_dummy_payload());
+
+        assert_eq!(fragment.fragment_id, 1);
+        assert_eq!(fragment.message_id, 2);
+        assert_eq!(fragment.payload, create_dummy_payload());
+    }
+}
