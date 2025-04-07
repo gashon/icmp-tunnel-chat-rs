@@ -4,7 +4,7 @@ A peer-to-peer chat application that tunnels messages through ICMP echo packets 
 
 ## Overview
 
-ICMP Tunnel Chat enables covert communication by encoding messages inside ICMP echo request/reply packets. This technique can be useful for communication in networks where traditional TCP/UDP traffic is restricted but ICMP is allowed.
+ICMP Tunnel Chat enables covert communication by encoding messages inside ICMP echo request/reply packets. 
 
 ## Features
 
